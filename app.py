@@ -40,7 +40,8 @@ RULES = """DESIGN RULES:
 
 TESTBENCH RULES:
 - Module named tb. Include: initial begin $dumpfile("wave.vcd"); $dumpvars(0, tb); end
-- Test ALL input combinations if 4 or fewer input bits, otherwise edge cases.
+- Test ALL input combinations only if the total number of input bits is 6 or fewer. Otherwise test 15 to 20 chosen cases (all zeros, all ones, carry, overflow, a few random values), and test every operation or select value at least twice.
+- Never print more than 25 lines of test output.
 - For clocked circuits, change inputs at negedge clk.
 - If there are several implementations, check they all match.
 - Print one line per test with inputs, actual output, expected output and PASS or FAIL.
@@ -87,7 +88,9 @@ def run_sim(design, tb):
 
 def draw_wave(path):
     v = vcdvcd.VCDVCD(path, store_tvs=True)
-    names = [n for n in v.signals if n.count(".") == 1][:12]
+    skip = ("i_", "tests_", "test_", "pass", "fail", "error", "count", "idx", "loop")
+    names = [n for n in v.signals
+             if n.count(".") == 1 and not n.split(".")[-1].lower().startswith(skip)][:12]
     if not names:
         names = list(v.signals)[:12]
     end = max(int(v.endtime), 1)
@@ -116,12 +119,21 @@ def draw_wave(path):
     return fig
 
 
+def short_log(log, n=12):
+    lines = log.strip().splitlines()
+    if len(lines) <= n + 4:
+        return log
+    hidden = len(lines) - n - 3
+    return "\n".join(lines[:n] + [f"... {hidden} more lines hidden ..."] + lines[-3:])
+
+
 spec = st.text_area("Circuit description",
                     placeholder="4-bit ALU with add, subtract, AND, OR... Print all values in binary")
 
 if st.button("Generate and test") and spec.strip():
     prompt = f"""Write Verilog for this circuit: {spec}
-Reply with exactly this, in order:
+If the description is not a digital circuit, reply with only the word INVALID.
+Otherwise reply with exactly this, in order:
 1) a code block with the design module
 2) a code block with a self-checking testbench
 3) the explanation
@@ -134,13 +146,18 @@ Reply with exactly this, in order:
         if reply is None:
             st.error("Gemini is busy. Try again in a minute.")
             break
+        if reply.strip().startswith("INVALID"):
+            st.warning("Please describe a digital circuit, like a counter, ALU or FSM.")
+            break
         try:
             design, tb = get_code(reply)
         except Exception:
             st.warning("AI reply format was wrong, retrying...")
             continue
         ok, log, vcd_path = run_sim(design, tb)
-        st.code(log)
+        st.code(short_log(log))
+        with st.expander("Full simulator output"):
+            st.code(log)
         if ok:
             st.success(f"PASSED in {attempt} attempt(s)")
             st.markdown("**Explanation**")
