@@ -88,7 +88,7 @@ def run_sim(design, tb):
 
 def draw_wave(path):
     v = vcdvcd.VCDVCD(path, store_tvs=True)
-    skip = ("i_", "tests_", "test_", "pass", "fail", "error", "count", "idx", "loop")
+    skip = ("i_", "tests_", "test_", "total_", "pass", "fail", "error", "count", "idx", "loop")
     names = [n for n in v.signals
              if n.count(".") == 1 and not n.split(".")[-1].lower().startswith(skip)][:12]
     if not names:
@@ -109,9 +109,11 @@ def draw_wave(path):
             except ValueError:
                 vals.append(0)
         ax.step(times, vals + [vals[-1]], where="post", color="#1F3A5F")
+        ax.margins(y=0.5)
         if len(tv) <= 30 and int(v[n].size) > 1:
-            for t, x in tv:
-                ax.text(int(t), max(vals) * 0.5, x, fontsize=7, va="center")
+            for i, (t, x) in enumerate(tv):
+                mid = (times[i] + times[i + 1]) / 2
+                ax.text(mid, vals[i], x, fontsize=8, ha="center", va="bottom")
         ax.set_yticks([])
         ax.set_ylabel(n.split(".")[-1], rotation=0, ha="right", va="center")
     axes[-1].set_xlabel("time")
